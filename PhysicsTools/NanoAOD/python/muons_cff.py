@@ -3,6 +3,8 @@ from PhysicsTools.NanoAOD.nano_eras_cff import *
 from PhysicsTools.NanoAOD.common_cff import *
 import PhysicsTools.PatAlgos.producersLayer1.muonProducer_cfi
 
+from PhysicsTools.NanoAOD.muonvtxagnosticiso_cff import *
+
 
 # this below is used only in some eras
 slimmedMuonsUpdated = cms.EDProducer("PATMuonUpdater",
@@ -174,6 +176,19 @@ mergedGlobalIdxs = cms.EDProducer("GlobalIdxProducer",
                                   src1 = cms.InputTag("trackrefitideal", "globalIdxs")
 )
 
+vtxAgnIsoVariables = cms.PSet(
+    vtxAgnPfRelIso04_chg = ExtVar(cms.InputTag("muonvtxagniso04:vtxAgnosticChargedHadronIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.4, charged component)"),
+    vtxAgnPfRelIso04_neu = ExtVar(cms.InputTag("muonvtxagniso04:vtxAgnosticNeutralHadronIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.4, neutral component)"),
+    vtxAgnPfRelIso04_pho = ExtVar(cms.InputTag("muonvtxagniso04:vtxAgnosticPhotonIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.4, photon component)"),
+    vtxAgnPfRelIso04_pu = ExtVar(cms.InputTag("muonvtxagniso04:vtxAgnosticPUIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.4, PU component)"),
+    vtxAgnPfRelIso04_all = ExtVar(cms.InputTag("muonvtxagniso04:vtxAgnosticTotalIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.4, combination with delta beta corrections)"),
+    vtxAgnPfRelIso03_chg = ExtVar(cms.InputTag("muonvtxagniso03:vtxAgnosticChargedHadronIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.3, charged component)"),
+    vtxAgnPfRelIso03_neu = ExtVar(cms.InputTag("muonvtxagniso03:vtxAgnosticNeutralHadronIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.3, neutral component)"),
+    vtxAgnPfRelIso03_pho = ExtVar(cms.InputTag("muonvtxagniso03:vtxAgnosticPhotonIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.3, photon component)"),
+    vtxAgnPfRelIso03_pu = ExtVar(cms.InputTag("muonvtxagniso03:vtxAgnosticPUIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.3, PU component)"),
+    vtxAgnPfRelIso03_all = ExtVar(cms.InputTag("muonvtxagniso03:vtxAgnosticTotalIso"), float, doc="Manually computed PF relative isolation to avoid vertex selection (DR=0.3, combination with delta beta corrections)"),
+)
+
 muonTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
     src = cms.InputTag("linkedObjects","muons"),
     cut = cms.string(""), #we should not filter on cross linked collections
@@ -204,6 +219,7 @@ muonTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
         pfRelIso04_chg = Var("pfIsolationR04().sumChargedHadronPt/pt",float,doc="PF relative isolation dR=0.4, charged component"),
         pfRelIso04_neu = Var("pfIsolationR04().sumNeutralHadronEt/pt",float,doc="PF relative isolation dR=0.4, charged component"),
         pfRelIso04_pho = Var("pfIsolationR04().sumPhotonEt/pt",float,doc="PF relative isolation dR=0.4, charged component"),
+        pfRelIso04_pu = Var("pfIsolationR04().sumPUPt/pt",float,doc="PF relative isolation dR=0.4, charged component"),
         pfRelIso04_all = Var("(pfIsolationR04().sumChargedHadronPt + max(pfIsolationR04().sumNeutralHadronEt + pfIsolationR04().sumPhotonEt - pfIsolationR04().sumPUPt/2,0.0))/pt",float,doc="PF relative isolation dR=0.4, total (deltaBeta corrections)"),
         jetRelIso = Var("?userCand('jetForLepJetVar').isNonnull()?(1./userFloat('ptRatio'))-1.:(pfIsolationR04().sumChargedHadronPt + max(pfIsolationR04().sumNeutralHadronEt + pfIsolationR04().sumPhotonEt - pfIsolationR04().sumPUPt/2,0.0))/pt",float,doc="Relative isolation in matched jet (1/ptRatio-1, pfRelIso04_all if no matched jet)",precision=8),
         jetPtRelv2 = Var("?userCand('jetForLepJetVar').isNonnull()?userFloat('ptRel'):0",float,doc="Relative momentum of the lepton with respect to the closest jet after subtracting the lepton",precision=8),
@@ -238,7 +254,7 @@ muonTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
         innerTrackAlgo = Var('? innerTrack().isNonnull() ? innerTrack().algo() : -99', 'int', precision=-1, doc='Track algo enum, check DataFormats/TrackReco/interface/TrackBase.h for details.'),
         innerTrackOriginalAlgo = Var('? innerTrack().isNonnull() ? innerTrack().originalAlgo() : -99', 'int', precision=-1, doc='Track original algo enum'),
         ),
-    externalVariables = cms.PSet(
+    externalVariables = cms.PSet(vtxAgnIsoVariables,
         mvaTTH = ExtVar(cms.InputTag("muonMVATTH"),float, doc="TTH MVA lepton ID score",precision=14),
         mvaLowPt = ExtVar(cms.InputTag("muonMVALowPt"),float, doc="Low pt muon ID score",precision=14),
         fsrPhotonIdx = ExtVar(cms.InputTag("muonFSRassociation:fsrIndex"),int, doc="Index of the associated FSR photon"),
@@ -326,7 +342,7 @@ muonMCTable = cms.EDProducer("CandMCMatchTableProducer",
 muonSequence = cms.Sequence(slimmedMuonsUpdated+isoForMu + ptRatioRelForMu + slimmedMuonsWithUserData + finalMuons + finalLooseMuons)
 muonMCTP = cms.Sequence(muonsMCMatchForTable + muonMCTable)
 muonMC = cms.Sequence(trackrefitideal + mergedGlobalIdxs + muonMCTP + muonIdealTable + muonIdealExternalVecVarsTable)
-muonTables = cms.Sequence(muonFSRphotons + muonFSRassociation + muonMVATTH + muonMVALowPt + geopro + tracksfrommuons + trackrefit + muonTable + muonExternalVecVarsTable + fsrTable)
+muonTables = cms.Sequence(muonFSRphotons + muonFSRassociation + muonMVATTH + muonMVALowPt + geopro + tracksfrommuons + trackrefit + muonvtxagniso04 + muonvtxagniso03 + muonTable + muonExternalVecVarsTable + fsrTable)
 
 # remove track refit stuff for low pu
 run2_nanoAOD_LowPU.toReplaceWith(muonTables, muonTables.copyAndExclude([geopro, tracksfrommuons, trackrefit, muonExternalVecVarsTable]))
