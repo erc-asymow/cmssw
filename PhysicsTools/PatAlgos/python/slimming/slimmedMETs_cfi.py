@@ -24,10 +24,14 @@ slimmedMETs = cms.EDProducer("PATMETSlimmer",
    addDeepMETs = cms.bool(False),
    deepMETResolutionTune = cms.InputTag("deepMETsResolutionTune"),
    deepMETResponseTune = cms.InputTag("deepMETsResponseTune"),
+   
+   #adding PV Robust version of DeepMET
+   addDeepMETsPVRobust = cms.bool(False),
+   deepMETPVRobust = cms.InputTag("deepMETsPVRobust"),
+   deepMETPVRobustNoPUPPI = cms.InputTag("deepMETsPVRobustNoPUPPI"),
 
    #switch to read the type0 correction from the existing slimmedMET
    #when running on top of miniAOD (type0 cannot be redone at the miniAOD level
    runningOnMiniAOD = cms.bool(False)
 
 )
-

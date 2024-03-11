@@ -38,5 +38,17 @@ genTable  = cms.EDProducer("SimpleGenEventFlatTableProducer",
         ),
 )
 
+pvRobustTable = cms.EDProducer("GlobalVariablesTableProducer",
+    variables = cms.PSet(
+        PVRobustIndex = ExtVar( cms.InputTag("puppiPVRobust:PVRobustIndex"), "int", doc = "index of the PV closest to the leading loose muon; -1 means failure to find any vertex close to the leading muon within 0.2 cm, use the beamSpot and muon vz in this case" )
+    )
+)
+
+pvMuonIndexTable = cms.EDProducer("GlobalVariablesTableProducer",
+    variables = cms.PSet(
+        PVMuonIndex = ExtVar( cms.InputTag("puppiPVRobust:PVMuonIndex"), "int", doc = "index of the slimmedMuons collection that is used to determine the robust PV index" )
+    )
+)
+
 globalTables = cms.Sequence(rhoTable)
 globalTablesMC = cms.Sequence(puTable+genTable)

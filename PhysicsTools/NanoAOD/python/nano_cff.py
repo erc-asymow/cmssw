@@ -209,8 +209,28 @@ def nanoAOD_addDeepMET(process, addDeepMETProducer, ResponseTune_Graph):
         # no leptons in the training. so remove leptons from the dnn input
         run2_nanoAOD_LowPU.toModify(process.deepMETsResolutionTune, ignore_leptons=cms.bool(True))
         run2_nanoAOD_LowPU.toModify(process.deepMETsResponseTune, ignore_leptons=cms.bool(True))
-
+        
     process.metTables += process.deepMetTables
+        
+    # add PV Robust version of DeepMET
+    print("add PV Robust version of DeepMET")
+    process.load('CommonTools.PileupAlgos.Puppi_cff')
+    process.load('RecoMET.METPUSubtraction.deepMETPVRobustProducer_cfi')
+    process.deepMETsPVRobust = process.deepMETPVRobustProducer.clone(
+        #do_print=cms.bool(True), 
+        ignore_leptons = cms.bool(True)
+    )
+    process.deepMETsPVRobustNoPUPPI = process.deepMETPVRobustProducer.clone(
+        #do_print=cms.bool(True), 
+        ignore_leptons = cms.bool(True), 
+        usePUPPI = cms.bool(False),
+        graph_path = cms.string('RecoMET/METPUSubtraction/data/deepmet_pvrobust/deepmet_pvrobust_nopuppi.pb')
+    )
+    process.metTables += process.deepMetPVRobustTables
+    process.pvRobustTable = pvRobustTable.clone()
+    process.globalTables += process.pvRobustTable
+    process.pvMuonIndexTable = pvMuonIndexTable.clone()
+    process.globalTables += process.pvMuonIndexTable
     return process
 
 from PhysicsTools.PatUtils.tools.runMETCorrectionsAndUncertainties import runMetCorAndUncFromMiniAOD

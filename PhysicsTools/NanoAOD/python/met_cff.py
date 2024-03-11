@@ -140,6 +140,30 @@ deepMetResponseTuneTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
     ),
 )
 
+deepMetPVRobustTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
+    src = metTable.src,
+    name = cms.string("DeepMETPVRobust"),
+    doc = cms.string("Deep MET calculated PV robustness features for mW"),
+    singleton = cms.bool(True), # there's always exactly one MET per event
+    extension = cms.bool(False), # this is the main table for the MET
+    variables = cms.PSet(#NOTA BENE: we don't copy PTVars here!
+        pt = Var("corPt('RawDeepPVRobust')", float, doc="DeepMET PVRobust pt",precision=-1),
+        phi = Var("corPhi('RawDeepPVRobust')", float, doc="DeepMET PVRobust phi",precision=12),
+    ),
+)
+
+deepMetPVRobustNoPUPPITable = cms.EDProducer("SimpleCandidateFlatTableProducer",
+    src = metTable.src,
+    name = cms.string("DeepMETPVRobustNoPUPPI"),
+    doc = cms.string("Deep MET calculated PV robustness features for mW, without PUPPI"),
+    singleton = cms.bool(True), # there's always exactly one MET per event
+    extension = cms.bool(False), # this is the main table for the MET
+    variables = cms.PSet(#NOTA BENE: we don't copy PTVars here!
+        pt = Var("corPt('RawDeepPVRobustNoPUPPI')", float, doc="DeepMET PVRobustNoPUPPI pt",precision=-1),
+        phi = Var("corPhi('RawDeepPVRobustNoPUPPI')", float, doc="DeepMET PVRobustNoPUPPI phi",precision=12),
+    ),
+)
+
 metFixEE2017Table = metTable.clone()
 metFixEE2017Table.src = cms.InputTag("slimmedMETsFixEE2017")
 metFixEE2017Table.name = cms.string("METFixEE2017")
@@ -162,6 +186,7 @@ metMCTable = cms.EDProducer("SimpleCandidateFlatTableProducer",
 
 metTables = cms.Sequence( metTable + rawMetTable + caloMetTable + puppiMetTable + rawPuppiMetTable+ tkMetTable + chsMetTable)
 deepMetTables = cms.Sequence( deepMetResolutionTuneTable + deepMetResponseTuneTable )
+deepMetPVRobustTables = cms.Sequence( deepMetPVRobustTable + deepMetPVRobustNoPUPPITable )
 _withFixEE2017_sequence = cms.Sequence(metTables.copy() + metFixEE2017Table)
 for modifier in run2_nanoAOD_94XMiniAODv1, run2_nanoAOD_94XMiniAODv2:
     modifier.toReplaceWith(metTables,_withFixEE2017_sequence) # only in old miniAOD, the new ones will come from the UL rereco

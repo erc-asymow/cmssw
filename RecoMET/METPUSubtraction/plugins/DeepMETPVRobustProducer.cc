@@ -8,22 +8,27 @@
 
 #include "PhysicsTools/TensorFlow/interface/TensorFlow.h"
 
-struct DeepMETCache {
+struct DeepMETPVRobustCache {
   std::atomic<tensorflow::GraphDef*> graph_def;
 };
 
-class DeepMETProducer : public edm::stream::EDProducer<edm::GlobalCache<DeepMETCache> > {
+class DeepMETPVRobustProducer : public edm::stream::EDProducer<edm::GlobalCache<DeepMETPVRobustCache>> {
 public:
-  explicit DeepMETProducer(const edm::ParameterSet&, const DeepMETCache*);
+  explicit DeepMETPVRobustProducer(const edm::ParameterSet&, const DeepMETPVRobustCache*);
   void produce(edm::Event& event, const edm::EventSetup& setup) override;
   static void fillDescriptions(edm::ConfigurationDescriptions& descriptions);
 
   // static methods for handling the global cache
-  static std::unique_ptr<DeepMETCache> initializeGlobalCache(const edm::ParameterSet&);
-  static void globalEndJob(DeepMETCache*);
+  static std::unique_ptr<DeepMETPVRobustCache> initializeGlobalCache(const edm::ParameterSet&);
+  static void globalEndJob(DeepMETPVRobustCache*);
 
 private:
-  const edm::EDGetTokenT<std::vector<pat::PackedCandidate> > pf_token_;
+  const edm::EDGetTokenT<std::vector<pat::PackedCandidate>> pf_token_;
+  const edm::EDGetTokenT<edm::ValueMap<double>> PFPVRobustDxy_;
+  const edm::EDGetTokenT<edm::ValueMap<double>> PFPVRobustDz_;
+  const edm::EDGetTokenT<edm::ValueMap<double>> PFPVRobustPuppiWeight_;
+
+  const bool usePUPPI_;
   const float norm_;
   const bool ignore_leptons_;
   const unsigned int max_n_pf_;
@@ -34,7 +39,6 @@ private:
   tensorflow::Tensor input_;
   tensorflow::Tensor input_cat0_;
   tensorflow::Tensor input_cat1_;
-  tensorflow::Tensor input_cat2_;
 
   inline static const std::unordered_map<int, int32_t> charge_embedding_{{-1, 0}, {0, 1}, {1, 2}};
   inline static const std::unordered_map<int, int32_t> pdg_id_embedding_{
@@ -50,8 +54,12 @@ namespace {
   }
 }  // namespace
 
-DeepMETProducer::DeepMETProducer(const edm::ParameterSet& cfg, const DeepMETCache* cache)
-    : pf_token_(consumes<std::vector<pat::PackedCandidate> >(cfg.getParameter<edm::InputTag>("pf_src"))),
+DeepMETPVRobustProducer::DeepMETPVRobustProducer(const edm::ParameterSet& cfg, const DeepMETPVRobustCache* cache)
+    : pf_token_(consumes<std::vector<pat::PackedCandidate>>(cfg.getParameter<edm::InputTag>("pf_src"))),
+      PFPVRobustDxy_(consumes<edm::ValueMap<double>>(cfg.getParameter<edm::InputTag>("PFPVRobustDxy"))),
+      PFPVRobustDz_(consumes<edm::ValueMap<double>>(cfg.getParameter<edm::InputTag>("PFPVRobustDz"))),
+      PFPVRobustPuppiWeight_(consumes<edm::ValueMap<double>>(cfg.getParameter<edm::InputTag>("PFPVRobustPuppiWeight"))),
+      usePUPPI_(cfg.getParameter<bool>("usePUPPI")),
       norm_(cfg.getParameter<double>("norm_factor")),
       ignore_leptons_(cfg.getParameter<bool>("ignore_leptons")),
       max_n_pf_(cfg.getParameter<unsigned int>("max_n_pf")),
@@ -59,32 +67,45 @@ DeepMETProducer::DeepMETProducer(const edm::ParameterSet& cfg, const DeepMETCach
       session_(tensorflow::createSession(cache->graph_def)) {
   produces<pat::METCollection>();
 
-  const tensorflow::TensorShape shape({1, max_n_pf_, 8});
+  const int n_input = usePUPPI_ ? 7 : 6;
+  const tensorflow::TensorShape shape({1, max_n_pf_, n_input});
   const tensorflow::TensorShape cat_shape({1, max_n_pf_, 1});
 
   input_ = tensorflow::Tensor(tensorflow::DT_FLOAT, shape);
   input_cat0_ = tensorflow::Tensor(tensorflow::DT_FLOAT, cat_shape);
   input_cat1_ = tensorflow::Tensor(tensorflow::DT_FLOAT, cat_shape);
-  input_cat2_ = tensorflow::Tensor(tensorflow::DT_FLOAT, cat_shape);
 }
 
-void DeepMETProducer::produce(edm::Event& event, const edm::EventSetup& setup) {
-  auto const& pfs = event.get(pf_token_);
+void DeepMETPVRobustProducer::produce(edm::Event& event, const edm::EventSetup& setup) {
+  edm::Handle<std::vector<pat::PackedCandidate>> hPFProduct;
+  event.getByToken(pf_token_, hPFProduct);
+  const std::vector<pat::PackedCandidate>* pfCol = hPFProduct.product();
+
+  edm::Handle<edm::ValueMap<double>> PFPVRobustDxy;
+  edm::Handle<edm::ValueMap<double>> PFPVRobustDz;
+  edm::Handle<edm::ValueMap<double>> PFPVRobustPuppiWeight;
+
+  event.getByToken(PFPVRobustDxy_, PFPVRobustDxy);
+  event.getByToken(PFPVRobustDz_, PFPVRobustDz);
+  if (usePUPPI_)
+    event.getByToken(PFPVRobustPuppiWeight_, PFPVRobustPuppiWeight);
 
   const tensorflow::NamedTensorList input_list = {
-      {"input", input_}, {"input_cat0", input_cat0_}, {"input_cat1", input_cat1_}, {"input_cat2", input_cat2_}};
+      {"input", input_}, {"input_cat0", input_cat0_}, {"input_cat1", input_cat1_}};
 
   // Set all inputs to zero
   input_.flat<float>().setZero();
   input_cat0_.flat<float>().setZero();
   input_cat1_.flat<float>().setZero();
-  input_cat2_.flat<float>().setZero();
 
   size_t i_pf = 0;
   float px_leptons = 0.;
   float py_leptons = 0.;
   const float scale = 1. / norm_;
-  for (const auto& pf : pfs) {
+  for (unsigned ipf = 0; ipf < pfCol->size(); ipf++) {
+    const auto& pf = (*pfCol)[ipf];
+    edm::Ptr<pat::PackedCandidate> pf_ptr(hPFProduct, ipf);
+
     if (ignore_leptons_) {
       int pdg_id = std::abs(pf.pdgId());
       if (pdg_id == 11 || pdg_id == 13) {
@@ -95,19 +116,21 @@ void DeepMETProducer::produce(edm::Event& event, const edm::EventSetup& setup) {
     }
 
     // fill the tensor
-    // PF keys [b'PF_dxy', b'PF_dz', b'PF_eta', b'PF_mass', b'PF_pt', b'PF_puppiWeight', b'PF_px', b'PF_py']
+    // dz, eta, mass, pt, puppi, px, py
     float* ptr = &input_.tensor<float, 3>()(0, i_pf, 0);
-    *ptr = pf.dxy();
-    *(++ptr) = pf.dz();
+    //*ptr = pf.dz();
+    *ptr = (*PFPVRobustDz)[pf_ptr];
     *(++ptr) = pf.eta();
     *(++ptr) = pf.mass();
     *(++ptr) = scale_and_rm_outlier(pf.pt(), scale);
-    *(++ptr) = pf.puppiWeight();
+    if (usePUPPI_) {
+      //*(++ptr) = pf.puppiWeight();
+      *(++ptr) = (*PFPVRobustPuppiWeight)[pf_ptr];
+    }
     *(++ptr) = scale_and_rm_outlier(pf.px(), scale);
     *(++ptr) = scale_and_rm_outlier(pf.py(), scale);
     input_cat0_.tensor<float, 3>()(0, i_pf, 0) = charge_embedding_.at(pf.charge());
     input_cat1_.tensor<float, 3>()(0, i_pf, 0) = pdg_id_embedding_.at(pf.pdgId());
-    input_cat2_.tensor<float, 3>()(0, i_pf, 0) = pf.fromPV();
 
     ++i_pf;
     if (i_pf == max_n_pf_) {
@@ -129,7 +152,7 @@ void DeepMETProducer::produce(edm::Event& event, const edm::EventSetup& setup) {
   py -= py_leptons;
 
   if (do_print_) {
-    std::cout << "DeepMETProducer: MET = " << std::hypot(px, py) << " (px, py) = (" << px << ", " << py << ")"
+    std::cout << "DeepMETPVRobustProducer: MET = " << std::hypot(px, py) << " (px, py) = (" << px << ", " << py << ")"
               << std::endl;
   }
 
@@ -139,9 +162,9 @@ void DeepMETProducer::produce(edm::Event& event, const edm::EventSetup& setup) {
   event.put(std::move(pf_mets));
 }
 
-std::unique_ptr<DeepMETCache> DeepMETProducer::initializeGlobalCache(const edm::ParameterSet& params) {
-  // this method is supposed to create, initialize and return a DeepMETCache instance
-  std::unique_ptr<DeepMETCache> cache = std::make_unique<DeepMETCache>();
+std::unique_ptr<DeepMETPVRobustCache> DeepMETPVRobustProducer::initializeGlobalCache(const edm::ParameterSet& params) {
+  // this method is supposed to create, initialize and return a DeepMETPVRobustCache instance
+  std::unique_ptr<DeepMETPVRobustCache> cache = std::make_unique<DeepMETPVRobustCache>();
 
   // load the graph def and save it
   std::string graphPath = params.getParameter<std::string>("graph_path");
@@ -153,17 +176,21 @@ std::unique_ptr<DeepMETCache> DeepMETProducer::initializeGlobalCache(const edm::
   return cache;
 }
 
-void DeepMETProducer::globalEndJob(DeepMETCache* cache) { delete cache->graph_def; }
+void DeepMETPVRobustProducer::globalEndJob(DeepMETPVRobustCache* cache) { delete cache->graph_def; }
 
-void DeepMETProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
+void DeepMETPVRobustProducer::fillDescriptions(edm::ConfigurationDescriptions& descriptions) {
   edm::ParameterSetDescription desc;
   desc.add<edm::InputTag>("pf_src", edm::InputTag("packedPFCandidates"));
+  desc.add<edm::InputTag>("PFPVRobustDxy", edm::InputTag("puppiPVRobust", "PFPVRobustDxy"));
+  desc.add<edm::InputTag>("PFPVRobustDz", edm::InputTag("puppiPVRobust", "PFPVRobustDz"));
+  desc.add<edm::InputTag>("PFPVRobustPuppiWeight", edm::InputTag("puppiPVRobust", "PFPVRobustPuppiWeight"));
+  desc.add<bool>("usePUPPI", true);
   desc.add<bool>("ignore_leptons", false);
   desc.add<double>("norm_factor", 50.);
   desc.add<unsigned int>("max_n_pf", 4500);
-  desc.add<std::string>("graph_path", "RecoMET/METPUSubtraction/data/deepmet/deepmet_v1_2018.pb");
+  desc.add<std::string>("graph_path", "RecoMET/METPUSubtraction/data/deepmet_pvrobust/deepmet_pvrobust.pb");
   desc.add<bool>("do_print", false);
-  descriptions.add("deepMETProducer", desc);
+  descriptions.add("deepMETPVRobustProducer", desc);
 }
 
-DEFINE_FWK_MODULE(DeepMETProducer);
+DEFINE_FWK_MODULE(DeepMETPVRobustProducer);
