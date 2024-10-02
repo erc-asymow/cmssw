@@ -84,6 +84,10 @@ pat::PATMETSlimmer::PATMETSlimmer(const edm::ParameterSet &iConfig)
     maybeReadShifts(iConfig, "deepMETResolutionTune", pat::MET::DeepResolutionTune);
     maybeReadShifts(iConfig, "deepMETResponseTune", pat::MET::DeepResponseTune);
   }
+  if (iConfig.getParameter<bool>("addDeepMETsPVRobust")) {
+    maybeReadShifts(iConfig, "deepMETPVRobust", pat::MET::DeepPVRobust);
+    maybeReadShifts(iConfig, "deepMETPVRobustNoPUPPI", pat::MET::DeepPVRobustNoPUPPI);
+  }
 
   produces<std::vector<pat::MET>>();
 }

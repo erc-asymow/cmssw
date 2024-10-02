@@ -40,6 +40,10 @@ RecoMETExtractor::RecoMETExtractor(const edm::ParameterSet& iConfig) {
     corLevel_ = pat::MET::RawDeepResponseTune;
   } else if (corLevel == "rawDeepResolutionTune") {
     corLevel_ = pat::MET::RawDeepResolutionTune;
+  } else if (corLevel == "rawDeepPVRobust") {
+    corLevel = pat::MET::RawDeepPVRobust;
+  } else if (corLevel == "rawDeepPVRobustNoPUPPI") {
+    corLevel = pat::MET::RawDeepPVRobustNoPUPPI;
   } else {
     //throw exception
   }

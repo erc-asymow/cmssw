@@ -203,6 +203,15 @@ void MET::initCorMap() {
   std::vector<MET::METCorrectionType> tmpDeepResolution;
   tmpDeepResolution.push_back(MET::DeepResolutionTune);
   corMap_[MET::RawDeepResolutionTune] = tmpDeepResolution;
+
+  // PV robust version of deepmet
+  std::vector<MET::METCorrectionType> tmpDeepPVRobust;
+  tmpDeepPVRobust.push_back(MET::DeepPVRobust);
+  corMap_[MET::RawDeepPVRobust] = tmpDeepPVRobust;
+
+  std::vector<MET::METCorrectionType> tmpDeepPVRobustNoPUPPI;
+  tmpDeepPVRobustNoPUPPI.push_back(MET::DeepPVRobustNoPUPPI);
+  corMap_[MET::RawDeepPVRobustNoPUPPI] = tmpDeepPVRobustNoPUPPI;
 }
 
 const MET::PackedMETUncertainty MET::findMETTotalShift(MET::METCorrectionLevel cor, MET::METUncertainty shift) const {
